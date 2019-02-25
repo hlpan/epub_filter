@@ -15,20 +15,25 @@ import os
 class EpubFilter:
 
     font_list=['kindle_build_in/STSongMedium.ttf',#kindle支持的
-        'big_font/FZSongS(SIP).ttf',#生僻字第一方案
-        'big_font/FZSongS.ttf',#生僻字第二方案
-        'big_font/SourceHanSerifSC-Medium.otf']#生僻字第三方案 
+                'big_font/SourceHanSerifSC-Medium.otf',#生僻字第1方案,思源字体覆盖也比较全面，而且字体比较漂亮，所以首先
+                'big_font/FZSongS(SIP).ttf',#生僻字第2方案
+                'big_font/FZSongS.ttf',#生僻字第3方案
+                'big_font/TH-Tshyn-P2.ttf',#生僻字第4方案
+                'big_font/TH-Tshyn-P1.ttf',#生僻字第5方案
+                'big_font/TH-Tshyn-P0.ttf'#生僻字第6方案
+                ]
     def __init__(self, input_book_name, font_charset_name):
         #字体渲染器
         pygame.freetype.init()
         #key:字体名 value渲染器
         self.fonts_render = {}
-        for font in EpubFilter.font_list[1:-1]:
+        for font in EpubFilter.font_list[1:]:
             self.fonts_render[font]=pygame.freetype.Font(font, 50)
-            self.fonts_render[font].strong=True
-            self.fonts_render[font].strength=1/36#default is 1/36 and the "bold" is 1/12
-        font = EpubFilter.font_list[-1]
-        self.fonts_render[font]=pygame.freetype.Font(font, 50)
+            if 'Medium' not in font:
+                #对于没有自带加粗的字体进行适当的加粗
+                #更加适合kindle的屏幕
+                self.fonts_render[font].strong=True
+                self.fonts_render[font].strength=1/36#default is 1/36 and the "bold" is 1/12
         #所有kindle目前支持的字符集合
         #'kindle内置中文字体/STHeitiMedium'
         self.font_charset_map=pickle.load(open(font_charset_name, 'rb'))
@@ -41,16 +46,17 @@ class EpubFilter:
         self.book=epub.read_epub(input_book_name)
         self.font_image_dir='font_image'
         self.new_css_filename='uncommon_word.css'
-        self.temp_dirctory = os.path.join(os.path.dirname(input_book_name),'temp')
+        self.temp_dirctory = os.path.join(os.path.dirname(input_book_name),
+        os.path.splitext(os.path.basename(input_book_name))[0]+"_temp")
         if not os.path.exists(self.temp_dirctory):
             os.makedirs(self.temp_dirctory)
     def filter_book(self):
         #先添加一个新的css用于将图片和文字显示为一行
         new_css_string='''
         .image_as_font {
-        vertical-align: -0.1em;
-        width: 0.9em;
-        height: 0.9em;
+        vertical-align: -0.15em;
+        width: 1em;
+        height: 1em;
         margin: 0.05em;
         }
         '''
@@ -110,6 +116,7 @@ class EpubFilter:
                 pos_list.append(idx)
                 #没有生成图片时才重新生成
                 if char not in self.char_image_map:
+                    is_in_big_font=False
                     #查找char所在的字体并渲染，big font还是不够大啊
                     for font, render in self.fonts_render.items():
                         if char in self.font_charset_map[font]:
@@ -121,7 +128,10 @@ class EpubFilter:
                             data=open(os.path.join(self.temp_dirctory,name),'rb').read()
                             self.book.add_item(epub.EpubImage(file_name=os.path.join(self.font_image_dir, name),media_type='image/png', content=data))
                             self.char_image_map[char]=name
+                            is_in_big_font=True
                             break
+                    if not is_in_big_font:
+                        print("Very very uncommon: ",char)
         return pos_list
    
     def add_image_tag_for_uncommon_words_in_one_text(self, text, pos_list, rel_image_dir):
@@ -161,7 +171,7 @@ class EpubFilter:
 
 def main(argv):
     input_book_name = ''
-    output_book_name = 'output.epub'
+    output_book_name = ''
     font_charset_name ='font_char_list'
 
     try:
@@ -185,7 +195,14 @@ def main(argv):
 
     current_dir = os.path.dirname(__file__)
     input_book_name=os.path.join(current_dir,input_book_name)
-    output_book_name=os.path.join(current_dir,output_book_name)
+    if len(input_book_name)==0:
+        print('epub_filter.py -i <inputfile> -o <outputfile>')
+        sys.exit()
+    if len(output_book_name)==0:
+        split_name=os.path.splitext(input_book_name)
+        output_book_name=split_name[0]+'_output'+split_name[1]
+    else:
+        output_book_name=os.path.join(current_dir,output_book_name)
     font_charset_name=os.path.join(current_dir,font_charset_name)
 
     epub_filer=EpubFilter(input_book_name, font_charset_name)
